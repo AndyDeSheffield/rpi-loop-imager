@@ -1,9 +1,12 @@
-/build**
+/build-*/
+
 src/build/*
 src/build/**
 compile_commands.json
 src/.cache/clangd
 obj-**
+/packaging/
+/rpi-imager.desktop
 
 # IDE Configurations
 .vscode
