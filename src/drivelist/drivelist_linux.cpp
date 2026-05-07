@@ -66,6 +66,7 @@ void walkStorageChildren(DeviceDescriptor& device, QStringList& labels, const QJ
 std::optional<DeviceDescriptor> parseBlockDevice(const QJsonObject& bdev, bool embeddedMode)
 {
     DeviceDescriptor device;
+    qDebug() << "PARSEBLOCKDEVICE RUNNING FOR" << bdev["kname"].toString();
 
     QString name = bdev["kname"].toString();
     QString subsystems = bdev["subsystems"].toString();
@@ -93,20 +94,12 @@ std::optional<DeviceDescriptor> parseBlockDevice(const QJsonObject& bdev, bool e
     // Determine if virtual based on subsystems
     // Pure block devices (subsystems == "block") are virtual (loop devices, etc.)
     // Physical devices have additional subsystems like "block:scsi:usb:pci"
-    //
-    // Loop devices are always virtual by definition — they are kernel constructs
-    // backed by files. We check the device name explicitly because lsblk in
-    // util-linux 2.39.x (shipped in Ubuntu 24.04 LTS) has a bug where the
-    // "subsystems" column intermittently returns empty for loop devices, causing
-    // them to flicker between virtual/non-virtual.
-    // See: https://github.com/util-linux/util-linux/pull/3089
-    device.isVirtual = name.startsWith("/dev/loop") || (subsystems == "block");
+    device.isVirtual = (subsystems == "block");
 
     // Physical USB drives and MMC cards should never be marked as virtual
     if (subsystems.contains("usb") || subsystems.contains("mmc")) {
         device.isVirtual = false;
     }
-
     // Parse read-only and removable flags (lsblk returns bool or "0"/"1" string)
     if (bdev["ro"].isBool()) {
         device.isReadOnly = bdev["ro"].toBool();
@@ -137,6 +130,46 @@ std::optional<DeviceDescriptor> parseBlockDevice(const QJsonObject& bdev, bool e
     // System drive: non-removable and non-virtual
     device.isSystem = !device.isRemovable && !device.isVirtual;
 
+    bool isImgLoop = false;
+
+    if (name.startsWith("/dev/loop") || name.startsWith("loop")) {
+
+        // Query losetup for the backing file
+        QString backingFile;
+        QProcess proc;
+        proc.start("losetup", QStringList() << "-O" << "BACK-FILE" << name);
+        proc.waitForFinished();
+
+        QString output = QString::fromUtf8(proc.readAllStandardOutput()).trimmed();
+        QStringList lines = output.split('\n');
+        if (lines.size() >= 2)
+            backingFile = lines[1].trimmed();
+
+        // Only treat .img-backed loops as real removable devices
+        if (backingFile.endsWith(".img")) {
+            isImgLoop = true;
+
+            device.isVirtual = false;
+            device.isSystem = false;
+            device.isRemovable = true;
+
+            const QString customLabel = QString("Loop device (%1)").arg(backingFile);
+            const QString customModel = name; // e.g. "/dev/loop14"
+            const_cast<QJsonObject&>(bdev)["label"] = customLabel;
+            const_cast<QJsonObject&>(bdev)["model"] = customModel;
+
+            qDebug() << "LOOP PATCH APPLIED FOR REAL" << name
+                     << "virt" << device.isVirtual
+                     << "sys"  << device.isSystem
+                     << "rem"  << device.isRemovable
+                     << "back" << backingFile;
+        } else {
+            qDebug() << "Skipping loop device without .img backing file:"
+                     << name << "->" << backingFile;
+        }
+    }
+
+
     // Parse block sizes
     device.blockSize = static_cast<uint32_t>(bdev["phy-sec"].toInt());
     device.logicalBlockSize = static_cast<uint32_t>(bdev["log-sec"].toInt());
@@ -162,12 +195,6 @@ std::optional<DeviceDescriptor> parseBlockDevice(const QJsonObject& bdev, bool e
     // Special case for internal SD card reader
     if (name == "/dev/mmcblk0" && descParts.isEmpty()) {
         descParts.append(QObject::tr("Internal SD card reader"));
-    }
-
-    // Fallback for loop devices with no label/vendor/model
-    if (name.startsWith("/dev/loop") && descParts.isEmpty()) {
-        QString shortName = name.mid(5);  // "/dev/loop0" -> "loop0"
-        descParts.append(QObject::tr("Loopback device (%1)").arg(shortName));
     }
 
     // Collect mountpoints from this device
@@ -242,7 +269,7 @@ std::optional<QByteArray> executeLsblk()
         "--json",
         "--paths",
         "--tree",
-        "--output", "kname,type,subsystems,ro,rm,hotplug,size,phy-sec,log-sec,label,vendor,model,mountpoint"
+        "--output", "KNAME,PKNAME,TYPE,SUBSYSTEMS,RO,RM,HOTPLUG,SIZE,PHY-SEC,LOG-SEC,LABEL,VENDOR,MODEL,MOUNTPOINT"
     };
 
     process.start("lsblk", args);

@@ -1917,6 +1917,7 @@ QString ImageWriter::constantVersion() const
 /* Returns true if version argument is newer than current program */
 bool ImageWriter::isVersionNewer(const QString &version)
 {
+    return false;
     // Strip 'v' prefix if present - QVersionNumber requires strings to start with a digit
     QString serverVersion = version.startsWith('v', Qt::CaseInsensitive) ? version.mid(1) : version;
     QString currentVersion = QString(IMAGER_VERSION_STR);
