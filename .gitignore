@@ -1,0 +1,52 @@
+/build**
+src/build/*
+src/build/**
+compile_commands.json
+src/.cache/clangd
+obj-**
+
+# IDE Configurations
+.vscode
+.zed
+.idea
+
+# Debian packaging
+debian/rpi-imager/**
+debian/rpi-imager-amd64/**
+debian/rpi-imager-embedded/**
+debian/rpi-imager-cli/**
+debian/.debhelper**
+debian/*.debhelper**
+debian/files
+debian/*.substvars
+debian/debhelper**
+debian/tmp
+debian/com.raspberrypi.rpi-imager.metainfo.xml
+
+# macOS
+.DS_Store
+*.DS_Store
+# editor backups
+*.*swp*
+
+# AppImage related
+*.AppImage*
+*.appimagecraft*
+AppDir-*
+appimage-*
+
+# Qt related
+qt-build**
+qt-src**
+qt/language_filters.json
+build
+build-**
+
+# IANA Timezone database generated as part of build
+timezones.txt
+
+# build-cli-only related
+test-cli-**
+
+# clangd related
+.cache/clangd
