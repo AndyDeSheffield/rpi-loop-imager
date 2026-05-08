@@ -2,23 +2,21 @@
 set -e
 
 # ----------------------------------------
-# 1. Move into the packaging directory
+# 1. Architecture‑aware setup (single block)
 # ----------------------------------------
 
-# Move into packaging directory
-cd "$(dirname "$0")/packaging"
-
-# Detect architecture
 ARCH="$(uname -m)"
 
 case "$ARCH" in
     x86_64)
-        DEPLOY=linuxdeploy-x86_64.AppImage
-        QTPLUGIN=linuxdeploy-plugin-qt-x86_64.AppImage
+        DEPLOY="linuxdeploy-x86_64.AppImage"
+        QTPLUGIN="linuxdeploy-plugin-qt-x86_64.AppImage"
+        QTROOT="$HOME/Qt/6.9.3/gcc_64"
         ;;
     aarch64|arm64)
-        DEPLOY=linuxdeploy-aarch64.AppImage
-        QTPLUGIN=linuxdeploy-plugin-qt-aarch64.AppImage
+        DEPLOY="linuxdeploy-aarch64.AppImage"
+        QTPLUGIN="linuxdeploy-plugin-qt-aarch64.AppImage"
+        QTROOT="$HOME/Qt/6.9.3/gcc_arm64"
         ;;
     *)
         echo "Unsupported architecture: $ARCH"
@@ -26,18 +24,40 @@ case "$ARCH" in
         ;;
 esac
 
-echo "Detected architecture: $ARCH"
-echo "Using linuxdeploy: $DEPLOY"
-echo "Using Qt plugin:   $QTPLUGIN"
+# Validate Qt installation
+if [ ! -d "$QTROOT" ]; then
+    echo "ERROR: Qt directory not found: $QTROOT"
+    exit 1
+fi
 
-# Download linuxdeploy if missing
+# Export environment for linuxdeploy-plugin-qt
+export QMAKE="$QTROOT/bin/qmake"
+export LD_LIBRARY_PATH="$QTROOT/lib"
+export PATH="$QTROOT/bin:$PATH"
+export QML_SOURCES_PATHS="../src"
+
+echo "Detected architecture: $ARCH"
+echo "Using linuxdeploy:    $DEPLOY"
+echo "Using Qt plugin:      $QTPLUGIN"
+echo "Using Qt root:        $QTROOT"
+echo "Using qmake:          $QMAKE"
+
+# ----------------------------------------
+# 2. Move into the packaging directory
+# ----------------------------------------
+
+cd "$(dirname "$0")/packaging"
+
+# ----------------------------------------
+# 3. Ensure linuxdeploy + plugin exist
+# ----------------------------------------
+
 if [ ! -f "$DEPLOY" ]; then
     echo "Downloading $DEPLOY..."
     wget "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/$DEPLOY"
     chmod +x "$DEPLOY"
 fi
 
-# Download Qt plugin if missing
 if [ ! -f "$QTPLUGIN" ]; then
     echo "Downloading $QTPLUGIN..."
     wget "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/$QTPLUGIN"
@@ -46,21 +66,10 @@ fi
 
 echo "Packaging tools ready."
 
-
-
 # ----------------------------------------
-# 2. Force linuxdeploy to use Qt 6.9.3
+# 4. Create minimal .desktop file (required)
 # ----------------------------------------
-export LD_LIBRARY_PATH=/home/andrew/Qt/6.9.3/gcc_64/lib
-export PATH=/home/andrew/Qt/6.9.3/gcc_64/bin:$PATH
-export QML_SOURCES_PATHS=../src
 
-echo "Using Qt from: $LD_LIBRARY_PATH"
-echo "Binary path:   ../src/build/rpi-imager"
-
-# ----------------------------------------
-# 3. Create minimal .desktop file (required)
-# ----------------------------------------
 cat > ../rpi-imager.desktop <<EOF
 [Desktop Entry]
 Type=Application
@@ -73,8 +82,9 @@ EOF
 echo "Created minimal desktop file: ../rpi-imager.desktop"
 
 # ----------------------------------------
-# 4. Confirm dummy icon exists and is valid
+# 5. Confirm dummy icon exists and is valid
 # ----------------------------------------
+
 if [ ! -f ../dummy.png ]; then
     echo "ERROR: ../dummy.png not found."
     echo "Create it with:"
@@ -85,14 +95,16 @@ fi
 echo "Using existing valid dummy icon: ../dummy.png"
 
 # ----------------------------------------
-# 5. Clean previous AppDir if it exists
+# 6. Clean previous AppDir if it exists
 # ----------------------------------------
+
 rm -rf AppDir
 
 # ----------------------------------------
-# 6. Run linuxdeploy with Qt plugin
+# 7. Run linuxdeploy with Qt plugin
 # ----------------------------------------
-./linuxdeploy-x86_64.AppImage \
+
+./"$DEPLOY" \
     --appdir AppDir \
     -e ../src/build/rpi-imager \
     -d ../rpi-imager.desktop \
@@ -100,9 +112,10 @@ rm -rf AppDir
     --plugin qt
 
 # ----------------------------------------
-# 7. Build the final AppImage
+# 8. Build the final AppImage
 # ----------------------------------------
-./linuxdeploy-x86_64.AppImage \
+
+./"$DEPLOY" \
     --appdir AppDir \
     --output appimage
 
